@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "Radar traderów Hyperliquid",
+  "version": "1.0.0",
+  "description": "Śledzi ruchy topowych traderów Hyperliquid i przelicza je na własny kapitał. Tylko odczyt publicznych danych, bez dostępu do portfela.",
+  "minimum_chrome_version": "120",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Radar traderów",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "dashboard.html"
+  },
+  "permissions": ["storage", "unlimitedStorage", "alarms", "notifications", "sidePanel"],
+  "host_permissions": [
+    "https://api.hyperliquid.xyz/*",
+    "https://stats-data.hyperliquid.xyz/*",
+    "https://hyperdash.com/*",
+    "https://cointelegraph.com/*",
+    "https://www.coindesk.com/*",
+    "https://decrypt.co/*",
+    "https://discord.com/api/webhooks/*",
+    "https://api.telegram.org/*"
+  ]
+}
