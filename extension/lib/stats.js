@@ -126,6 +126,9 @@ function analyze(fills, portfolio, truncated) {
     profitFactor: grossLoss > 0 ? grossWin / grossLoss : grossWin > 0 ? Infinity : 0,
     netPnl: grossWin - grossLoss,
     feesPaid: sum(closed.map((e) => e.fees)),
+    // Wynik ze wszystkich transakcji w dostępnej historii, także z częściowych zamknięć pozycji.
+    realizedPnl: sum(fills.map((f) => f.closedPnl - f.fee)),
+    feesAll: sum(fills.map((f) => f.fee)),
     medianHoldHours: medianHold,
     style,
     shortShare: full.length ? shorts.length / full.length : 0,
@@ -137,6 +140,7 @@ function analyze(fills, portfolio, truncated) {
     historyDays: firstTs ? (Date.now() - firstTs) / 86400000 : 0,
     pnlAllTime: all.pnl.length ? all.pnl[all.pnl.length - 1][1] : 0,
     pnlMonth: month.pnl.length ? month.pnl[month.pnl.length - 1][1] : 0,
+    pnlWeek: portfolio.week && portfolio.week.pnl.length ? portfolio.week.pnl[portfolio.week.pnl.length - 1][1] : 0,
   };
   if (!Number.isFinite(m.profitFactor)) m.profitFactor = 99;
   m.warnings = warnings(m);
@@ -149,7 +153,8 @@ function warnings(m) {
     w.push('Brak transakcji w badanym okresie: trader nie handluje albo trzyma stare pozycje bez zmian. Nie ma ruchów do kopiowania.');
     return w;
   }
-  if (m.trades < 20) w.push(`Mała próba: tylko ${m.trades} zamkniętych pozycji w pobranej historii, wynik może być przypadkiem.`);
+  if (m.trades === 0) w.push('W dostępnej historii nie ma ani jednej pozycji otwartej i zamkniętej w całości, więc skuteczności i czasu trzymania nie da się policzyć.');
+  else if (m.trades < 20) w.push(`Mała próba: tylko ${m.trades} zamkniętych pozycji w pobranej historii, wynik może być przypadkiem.`);
   if (m.style === 'skalper / bot') w.push('Pozycje trzyma krócej niż godzinę. Kopiowanie z opóźnieniem i prowizją prawie na pewno da gorszy wynik niż jego.');
   if (m.fillsPerDay > 150) w.push(`Bardzo dużo transakcji (${Math.round(m.fillsPerDay)} dziennie): to raczej automat albo animator rynku, nie do kopiowania ręcznie.`);
   if (m.winRate > 0.6 && m.payoff > 0 && m.payoff < 0.7) w.push('Wygrywa często, ale średnia strata jest wyraźnie większa od średniej wygranej. Wysoka skuteczność tu nie znaczy zysku.');
@@ -157,7 +162,10 @@ function warnings(m) {
   if (m.drawdownAll.pct > 0.4) w.push(`Miał obsunięcie rzędu ${Math.round(m.drawdownAll.pct * 100)}% konta. Przy małym kapitale takie obsunięcie zwykle kończy się likwidacją.`);
   if (m.historyDays && m.historyDays < 60) w.push(`Krótka historia konta (${Math.round(m.historyDays)} dni).`);
   if (m.pnlAllTime < 0) w.push('Od początku istnienia konta jest na minusie.');
-  if (m.truncated) w.push('Trader ma więcej transakcji, niż API udostępnia. Statystyki obejmują tylko część okresu.');
+  if (m.truncated) {
+    const span = m.spanDays < 1 ? `${Math.max(1, Math.round(m.spanDays * 24))} godz.` : `${Math.round(m.spanDays)} dni`;
+    w.push(`Giełda udostępnia tylko 10 000 ostatnich transakcji, a u tego tradera pokrywa to tylko ${span} handlu. Statystyki z transakcji obejmują ten wycinek.`);
+  }
   return w;
 }
 

@@ -298,6 +298,7 @@ function ring(frac) {
   const c = 2 * Math.PI * 16, f = Math.max(0, Math.min(1, frac));
   return `<svg width="42" height="42" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="16" fill="none" stroke="var(--surface-3)" stroke-width="4.5"/><circle cx="20" cy="20" r="16" fill="none" stroke="var(--accent)" stroke-width="4.5" stroke-linecap="round" stroke-dasharray="${f * c} ${c}" transform="rotate(-90 20 20)"/></svg>`;
 }
+const money = (x) => `<span class="${signCls(x)}">${usd(x)}</span>`;
 function tile(k, v, s, lead = '') { return `<div class="tile">${lead}<div><div class="k">${k}</div><div class="v">${v}</div>${s ? `<div class="s">${s}</div>` : ''}</div></div>`; }
 function renderDetail(d) {
   const m = d.metrics, sim = d.sim;
@@ -305,6 +306,13 @@ function renderDetail(d) {
   const name = d.leaderboard && d.leaderboard.name ? d.leaderboard.name : '';
   const hold = m.medianHoldHours < 1 ? nf(m.medianHoldHours * 60, 0) + ' min' : m.medianHoldHours < 48 ? nf(m.medianHoldHours, 1) + ' godz.' : nf(m.medianHoldHours / 24, 1) + ' dni';
 
+  // Przy bardzo aktywnych kontach giełda oddaje tylko wycinek historii: pokazujemy, ile naprawdę obejmuje.
+  const period = m.truncated
+    ? `dostępna historia: ostatnie ${m.spanDays < 1 ? Math.max(1, Math.round(m.spanDays * 24)) + ' godz.' : Math.round(m.spanDays) + ' dni'}`
+    : `ostatnie ${d.lookbackDays} dni`;
+  // Bez choćby jednej w pełni zamkniętej pozycji nie ma z czego liczyć skuteczności: zamiast zer pokazujemy brak danych.
+  const has = m.trades > 0;
+  const na = (v, s) => (has ? [v, s] : ['—', 'za mało danych']);
   const hard = m.style === 'skalper / bot' || m.fillsPerDay > 150 || (m.profitFactor < 1 && m.trades >= 5) || m.fills === 0;
   const level = !m.warnings.length ? 'ok' : hard ? 'bad' : 'mid';
   const verdict = {
@@ -315,6 +323,7 @@ function renderDetail(d) {
 
   let simHtml;
   if (!sim.ok) simHtml = `<p class="muted">${esc(sim.reason || 'Brak symulacji.')}</p>`;
+  else if (!sim.orders) simHtml = `<p class="muted">W dostępnej historii trader nie otworzył żadnej nowej pozycji od zera${sim.skippedSmall ? ' powyżej minimalnego zlecenia' : ''}, więc symulacja nie miała czego skopiować. To nie znaczy, że kopiowanie dałoby zero: po prostu nie da się tego policzyć z tych danych.</p>`;
   else {
     simHtml = `<div class="sim-big"><span class="from">${usd(sim.capital, true)} →</span><span class="to ${sim.busted ? 'neg' : signCls(sim.returnPct)}">${sim.busted ? 'konto wyzerowane' : usd(sim.finalEquity, true)}</span>${sim.busted ? '' : `<span class="chip ${sim.returnPct >= 0 ? 'long' : 'short'}">${pct(sim.returnPct)}</span>`}</div>
       <div class="sim-stats"><span>Okres <b>${nf(sim.days, 0)} dni</b></span><span>Zleceń <b>${sim.orders}</b></span><span>Prowizje <b>${usd(sim.fees, true)}</b></span><span>Pominięte (poniżej minimum) <b>${sim.skippedSmall}</b></span><span>Największe obsunięcie <b>${pct(sim.maxDrawdownPct)}</b></span>${sim.traderReturnPct != null ? `<span>Wynik tradera <b>${pct(sim.traderReturnPct)}</b></span>` : ''}</div>
@@ -331,18 +340,20 @@ function renderDetail(d) {
 
   $('detail').innerHTML = `<div class="card">
     <div class="hero">${avatar(d.address, 48)}
-      <div><h2>${name ? esc(name) : short(d.address)}</h2><div class="row small" style="margin-top:3px"><a href="${hyperdash(d.address)}" target="_blank" rel="noopener">${name ? short(d.address) : 'Profil na Hyperdash'} ${ico('ext', 12)}</a><span class="chip accent">${esc(m.style)}</span><span class="muted">ostatnie ${d.lookbackDays} dni · ${nf(m.fills)} transakcji · ${m.trades} zamkniętych pozycji · ${m.openNow} otwartych</span></div></div>
+      <div><h2>${name ? esc(name) : short(d.address)}</h2><div class="row small" style="margin-top:3px"><a href="${hyperdash(d.address)}" target="_blank" rel="noopener">${name ? short(d.address) : 'Profil na Hyperdash'} ${ico('ext', 12)}</a><span class="chip accent">${esc(m.style)}</span><span class="muted">${period} · ${nf(m.fills)} transakcji · ${m.trades} zamkniętych pozycji · ${m.openNow} otwartych</span></div></div>
       <span class="grow"></span>
       ${watched ? `<button class="btn danger" data-unwatch="${d.address}">Usuń z obserwowanych</button>` : `<button class="btn primary" data-watch="${d.address}" data-label="${esc(name)}">${ico('eye', 15)}Obserwuj</button>`}
       <button class="btn ghost" id="closeDetail" title="Zamknij analizę">${ico('x', 16)}</button></div>
     <div class="verdict ${level}">${ico(verdict[0], 20)}<div><b>${verdict[1]}</b>${verdict[2] ? `<span class="small" style="color:var(--text-2)">${verdict[2]}</span>` : ''}${m.warnings.length ? `<ul>${m.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}</div></div>
     <div class="tiles">
-      ${tile('Skuteczność', pct(m.winRate, 0), `${m.trades} pozycji`, ring(m.winRate))}
-      ${tile('Średnia wygrana / strata', `${usd(m.avgWin)} / ${usd(m.avgLoss)}`, `stosunek ${nf(m.payoff, 2)}`)}
-      ${tile('Zysk do strat', m.profitFactor >= 99 ? 'bez strat' : nf(m.profitFactor, 2), 'powyżej 1 = na plusie')}
-      ${tile('Wynik w okresie', `<span class="${signCls(m.netPnl)}">${usd(m.netPnl)}</span>`, `prowizje ${usd(m.feesPaid)}`)}
-      ${tile('Czas trzymania pozycji', hold, 'mediana')}
-      ${tile('Udział shortów', pct(m.shortShare, 0), `short ${usd(m.pnlShort)} · long ${usd(m.pnlLong)}`, ring(m.shortShare))}
+      ${tile('Skuteczność', ...na(pct(m.winRate, 0), `${m.trades} pozycji`), has ? ring(m.winRate) : '')}
+      ${tile('Średnia wygrana / strata', ...na(`${usd(m.avgWin)} / ${usd(m.avgLoss)}`, `stosunek ${nf(m.payoff, 2)}`))}
+      ${tile('Zysk do strat', ...na(m.profitFactor >= 99 ? 'bez strat' : nf(m.profitFactor, 2), 'powyżej 1 = na plusie'))}
+      ${tile('Czas trzymania pozycji', ...na(hold, 'mediana'))}
+      ${tile('Udział shortów', ...na(pct(m.shortShare, 0), `short ${usd(m.pnlShort)} · long ${usd(m.pnlLong)}`), has ? ring(m.shortShare) : '')}
+      ${tile('Zrealizowany wynik', m.fills ? money(m.realizedPnl) : '—', m.fills ? `w dostępnej historii · prowizje ${usd(m.feesAll)}` : 'brak transakcji')}
+      ${tile('Zysk z 7 dni', money(m.pnlWeek), 'według historii konta')}
+      ${tile('Zysk z 30 dni', money(m.pnlMonth), 'według historii konta')}
       ${tile('Największe obsunięcie', m.drawdownAll.pct ? pct(m.drawdownAll.pct, 0) : usd(m.drawdownAll.usd), `${usd(m.drawdownAll.usd)} · cała historia`)}
       ${tile('Historia konta', nf(m.historyDays, 0) + ' dni', `zysk łączny ${usd(m.pnlAllTime)}`)}
     </div>
@@ -351,7 +362,7 @@ function renderDetail(d) {
       <div class="box"><h3>Wynik według rynków</h3>${coinsHtml}</div>
     </div></div>`;
   $('closeDetail').addEventListener('click', () => { currentDetail = null; $('detail').innerHTML = ''; });
-  if (sim.ok && sim.curve.length > 1) drawChart($('simChart'), sim.curve, sim.capital);
+  if ($('simChart') && sim.curve.length > 1) drawChart($('simChart'), sim.curve, sim.capital);
 }
 
 // Wykres liniowy jednej serii: nasz kapitał w czasie, z linią kapitału początkowego i podglądem wartości.
